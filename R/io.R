@@ -64,15 +64,54 @@ read_arrow <- function(filepath) {
   arrow::read_parquet(filepath, as_data_frame = FALSE)
 }
 
+#' Decode _xHHHH_ escapes in mzML IDs
+#'
+#' mzML producers (e.g. ProteoWizard/msconvert) encode characters that are
+#' invalid at the start of an XML ID (such as digits) as `_xHHHH_`, where
+#' HHHH is the Unicode code point in hexadecimal. This helper decodes such
+#' sequences back to the original characters, e.g. `_x0032_` -> `2`.
+#'
+#' @param x A character vector of ID strings (possibly NA)
+#' @return Character vector with escapes decoded
+#' @keywords internal
+unescape_mzml_id <- function(x) {
+  stringr::str_replace_all(
+    x, "_x[0-9a-fA-F]{4}_",
+    function(m) intToUtf8(strtoi(substr(m, 3, 6), base = 16L), multiple=TRUE)
+  )
+}
+
+#' Strip known mass spectrometry file extensions
+#'
+#' Iteratively removes trailing `.raw`, `.mzml`, `.mzXML`, `.xml`, `.netcdf`,
+#' `.mzdata`, `.wiff` or `.wiff.scan` extensions (case insensitive), so that
+#' compound extensions like `.raw.mzml` are handled as well.
+#'
+#' @param x Character vector of file names
+#' @return Character vector with extensions stripped
+#' @keywords internal
+strip_ms_file_extensions <- function(x) {
+  repeat {
+    new_x <- gsub("\\.(raw|mzml|mzxml|xml|netcdf|mzdata|wiff|wiff.scan)$", "", x, ignore.case = TRUE)
+    if (all(new_x == x)) break
+    x <- new_x
+  }
+  x
+}
+
 #' Extract run ID from mass spectrometry file
 #'
 #' Reads the run identifier from mzML or Thermo RAW files.
 #' For mzML files, checks `fileDescription/sourceFileList` for source file names.
 #' If all source files (after stripping `.raw`, `.mzml`, `.mzXML`, `.netcdf`,
-#' `.mzdata` extensions, iteratively to handle compound extensions like `.raw.mzml`)
+#' `.mzdata`, `.wiff` extensions, iteratively to handle compound extensions like `.raw.mzml`)
 #' share the same base name, returns that name. Otherwise falls back to the
-#' `id` attribute of the `run` node.
+#' `id` attribute of the `run` node (decoding `_xHHHH_` character escapes used
+#' by converters such as msconvert).
 #' For RAW files, reads the sample ID from the file header.
+#' As a last resort (no usable source file name or run ID in mzML, or any other
+#' file type), returns the name derived from the filepath (with the same
+#' extension stripping).
 #'
 #' @param filepath Path to an mzML or RAW file
 #' @return Character string with run/sample ID
@@ -88,18 +127,13 @@ read_run_id <- function(filepath) {
     doc <- xml2::read_xml(filepath)
     ns <- xml2::xml_ns(doc)
 
+    # First option - use <sourceFile> name attribute 
     # Check for fileDescription > sourceFileList
     source_file_nodes <- xml2::xml_find_all(doc, ".//d1:fileDescription/d1:sourceFileList/d1:sourceFile[@name]", ns)
 
     if (length(source_file_nodes) > 0) {
       # Get all names and strip known file type endings
-      names <- xml2::xml_attr(source_file_nodes, "name")
-      # Strip .raw, .mzml, .mzXML, .netcdf, .mzdata (case insensitive), iteratively
-      repeat {
-        new_names <- gsub("\\.(raw|mzml|mzxml|netcdf|mzdata)$", "", names, ignore.case = TRUE)
-        if (all(new_names == names)) break
-        names <- new_names
-      }
+      names <- strip_ms_file_extensions(xml2::xml_attr(source_file_nodes, "name"))
       # Check if all stripped names match
       if (length(unique(names)) == 1) {
         return(names[1])
@@ -109,18 +143,20 @@ read_run_id <- function(filepath) {
     # Fallback to run node id attribute
     run_node <- xml2::xml_find_first(doc, ".//d1:run", ns)
     if (!inherits(run_node, "xml_missing")) {
-      return(xml2::xml_attr(run_node, "id"))
+      run_id <- xml2::xml_attr(run_node, "id")
+      if (!is.na(run_id) && nzchar(run_id)) {
+        return(unescape_mzml_id(run_id))
+      }
     }
 
-    stop("Cannot find run ID: neither sourceFile name nor run id attribute found in mzML file")    
   } else if (tools::file_ext(filepath) == 'raw') {
     if (!requireNamespace("rawrr", quietly = TRUE)) {
       stop("The 'rawrr' package is required but not installed. Please install it with install.packages('rawrr').")
     }
     return(rawrr::readFileHeader(filepath)$'Sample id')
-  } else {
-    return(NA)
   }
+
+  return(strip_ms_file_extensions(basename(filepath)))
 }
 
 #' Load multiple parquet files from testdata directory
