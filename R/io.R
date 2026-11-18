@@ -74,6 +74,7 @@ read_arrow <- function(filepath) {
 #' @param x A character vector of ID strings (possibly NA)
 #' @return Character vector with escapes decoded
 #' @keywords internal
+#' @export
 unescape_mzml_id <- function(x) {
   stringr::str_replace_all(
     x, "_x[0-9a-fA-F]{4}_",
@@ -90,6 +91,7 @@ unescape_mzml_id <- function(x) {
 #' @param x Character vector of file names
 #' @return Character vector with extensions stripped
 #' @keywords internal
+#' @export
 strip_ms_file_extensions <- function(x) {
   repeat {
     new_x <- gsub("\\.(raw|mzml|mzxml|xml|netcdf|mzdata|wiff|wiff.scan)$", "", x, ignore.case = TRUE)
