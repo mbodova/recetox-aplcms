@@ -16,10 +16,14 @@ Character string with run/sample ID
 Reads the run identifier from mzML or Thermo RAW files.
 For mzML files, checks `fileDescription/sourceFileList` for source file names.
 If all source files (after stripping `.raw`, `.mzml`, `.mzXML`, `.netcdf`,
-`.mzdata` extensions, iteratively to handle compound extensions like `.raw.mzml`)
+`.mzdata`, `.wiff` extensions, iteratively to handle compound extensions like `.raw.mzml`)
 share the same base name, returns that name. Otherwise falls back to the
-`id` attribute of the `run` node. If neither is present, stops with an error.
+`id` attribute of the `run` node (decoding `_xHHHH_` character escapes used
+by converters such as msconvert).
 For RAW files, reads the sample ID from the file header.
+As a last resort (no usable source file name or run ID in mzML, or any other
+file type), returns the name derived from the filepath (with the same
+extension stripping).
 }
 \examples{
 \dontrun{
