@@ -48,6 +48,18 @@ test_that('read_arrow can read file with metadata', {
   expect_equal(actual, expected)
 })
 
+test_that('write_tibble writes all attributes', {
+  t <- tibble::as_tibble(data_frame)
+  attr(t, 'run_id') <- 'peter'
+
+  outpath <- file.path(tempdir(), "output.parquet")
+
+  write_tibble(t, outpath)
+  actual <- read_arrow(outpath)
+
+  expect_equal(actual$schema$metadata$run_id, attr(t, 'run_id'))
+})
+
 patrick::with_parameters_test_that(
   "read_run_id get's the run id",
   {
@@ -69,27 +81,94 @@ patrick::with_parameters_test_that(
     ),
     mzxml = list(
       filepath = file.path("..", "testdata", "input", "test_file.mzXML"),
-      expected = NA
+      expected = "test_file"
     ),
     mzdata = list(
       filepath = file.path("..", "testdata", "input", "alg3.mzdata"),
-      expected = NA
+      expected = "alg3"
     ),
     processed_mzml = list(
       filepath = file.path("..", "testdata", "input", "Tribrid_201106_009-QC1_1_NEG_FISABIO_single_eic.raw.mzML"),
       expected = 'Tribrid_201106_009-QC1_1_NEG_FISABIO'
+    ),
+    escaped_run_id = list(
+      filepath = file.path("..", "testdata", "input", "escaped_run_id.mzML"),
+      expected = '2016_test'
+    ),
+    escaped_run_id2 = list(
+      filepath = file.path("..", "testdata", "input", "tiny.pwiz.1.1.mzML"),
+      expected = 'Experiment 1'
+    ),
+    file_path_fallback = list(
+      filepath = file.path("..", "testdata", "input", "tiny2_SRM.mzML0.93.xml"),
+      expected = 'tiny2_SRM.mzML0.93'
+    ),
+    no_run_id_no_source_name_mzml = list(
+      filepath = file.path("..", "testdata", "input", "no_run_id_no_source_name.mzML"),
+      expected = 'no_run_id_no_source_name'
     )
   )
 )
 
-test_that('write_tibble writes all attributes', {
-  t <- tibble::as_tibble(data_frame)
-  attr(t, 'run_id') <- 'peter'
+patrick::with_parameters_test_that(
+  "unescape_mzml_id works",
+  {
+    expect_equal(unescape_mzml_id(value), expected)
+  },
+  patrick::cases(
+    mbr0 = list(
+      value = "_x0032_016_Jan_12_QE2_47",
+      expected = "2016_Jan_12_QE2_47"
+    ),
+    simple1 = list(
+      value = "_x0041__x0042_",
+      expected = "AB"
+    ),
+    simple2 = list(
+      value = "_x0032_016_test",
+      expected = "2016_test"
+    ),
+    blatt1_minimal = list(
+      value = "LA_x0020_1777_x0020_Blatt_x0020_sauer1",
+      expected = "LA 1777 Blatt sauer1"
+    )
+  )
+)
 
-  outpath <- file.path(tempdir(), "output.parquet")
+patrick::with_parameters_test_that(
+  "strip_ms_file_extensions works",
+  {
+    expect_equal(strip_ms_file_extensions(value), expected)
+  },
+  patrick::cases(
+    simple = list(
+      value = "sample.raw",
+      expected = "sample"
+    ),
+    compound = list(
+      value = "Tribrid_QC1.raw.mzML",
+      expected = "Tribrid_QC1"
+    ),
+    wiff_scan = list(
+      value = "sample.wiff.scan",
+      expected = "sample"
+    ),
+    case_insensitive = list(
+      value = "test_file.mzXML",
+      expected = "test_file"
+    ),
+    vectorized = list(
+      value = c("a.raw", "b.mzML"),
+      expected = c("a", "b")
+    ),
+    no_extension = list(
+      value = "plain_name",
+      expected = "plain_name"
+    )
+  )
+)
 
-  write_tibble(t, outpath)
-  actual <- read_arrow(outpath)
 
-  expect_equal(actual$schema$metadata$run_id, attr(t, 'run_id'))
-})
+#TODO: test if fallback 2 in read_run_id works - DONE
+
+#TODO test fallback 3 for basename - needs new test file - llm should generate - DONE
