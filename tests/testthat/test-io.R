@@ -168,7 +168,3 @@ patrick::with_parameters_test_that(
   )
 )
 
-
-#TODO: test if fallback 2 in read_run_id works - DONE
-
-#TODO test fallback 3 for basename - needs new test file - llm should generate - DONE
